@@ -1,0 +1,63 @@
+name: Deploy static content to Pages
+
+on:
+  # デフォルトブランチを対象としたプッシュ時にで実行されます
+  push:
+    branches: ["main"]
+
+  # Actions タブから手動でワークフローを実行できるようにします
+  workflow_dispatch:
+
+jobs:
+  # Build job
+  build:
+    # <Not provided for brevity>
+    # At a minimum this job should upload artifacts using actions/upload-pages-artifact
+
+    steps:
+      # リポジトリをチェックアウトする
+      - uses: actions/checkout@v4
+      # nodejs をセットアップする
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # node_modules のキャッシュが有効ならそれを使う
+      - id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('.node-version') }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: node-modules-${{ runner.os }}-${{ hashFiles('.node-version') }}-${{ hashFiles('package-lock.json') }}
+      # node_modules のキャッシュが有効出ない場合、必要なパッケージをインストール
+      - if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: npm ci
+      # 公開対象をビルド
+      - run: npm run build
+      # ビルド成果物を gzip tar にまとめて GitHub Actions にアップロード
+      # (この例ではビルドの結果 docs ディレクトリ以下にファイルが生成される想定
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+
+  # Deploy job
+  deploy:
+    # Add a dependency to the build job
+    needs: build
+
+    # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
+    permissions:
+      pages: write      # to deploy to Pages
+      id-token: write   # to verify the deployment originates from an appropriate source
+
+    # Deploy to the github-pages environment
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    # Specify runner + deployment step
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4 # or specific "vX.X.X" version tag for this action
